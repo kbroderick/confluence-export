@@ -67,6 +67,16 @@ class ConfluenceClient:
             }
         )
 
+    @staticmethod
+    def _safe_response_json(response: requests.Response) -> Optional[Dict[str, Any]]:
+        """Parse JSON from a response body, returning None if the body is empty or not JSON."""
+        if not response.text:
+            return None
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
     def _make_request(
         self,
         method: str,
@@ -122,16 +132,25 @@ class ConfluenceClient:
 
                 # Raise for other error status codes
                 if response.status_code >= 400:
-                    error_msg = f"API request failed with status {response.status_code}"
-                    try:
-                        error_data = response.json()
-                        if "message" in error_data:
-                            error_msg = f"{error_msg}: {error_data['message']}"
-                    except ValueError:
-                        pass
-                    raise ConfluenceAPIError(
-                        error_msg, response.status_code, response.json() if response.text else None
-                    )
+                    error_data = self._safe_response_json(response)
+
+                    if response.status_code == 401:
+                        error_msg = (
+                            "Authentication failed (401 Unauthorized). "
+                            "Check your CONFLUENCE_EMAIL and CONFLUENCE_API_TOKEN."
+                        )
+                    elif response.status_code == 403:
+                        error_msg = (
+                            "Access denied (403 Forbidden). "
+                            "Your account may not have permission to access this resource."
+                        )
+                    else:
+                        error_msg = f"API request failed with status {response.status_code}"
+
+                    if error_data and "message" in error_data:
+                        error_msg = f"{error_msg}: {error_data['message']}"
+
+                    raise ConfluenceAPIError(error_msg, response.status_code, error_data)
 
                 return response
 

@@ -173,6 +173,55 @@ class TestConfluenceClientRequests:
         assert exc_info.value.status_code == 404
 
     @responses.activate
+    def test_authentication_error_with_html_body(self):
+        """Test that 401 HTML responses produce a clear authentication error."""
+        responses.add(
+            responses.GET,
+            "https://example.atlassian.net/wiki/api/v2/pages/12345",
+            body="<!doctype html><title>HTTP Status 401 - Unauthorized</title>",
+            status=401,
+            content_type="text/html",
+        )
+
+        client = ConfluenceClient(
+            base_url="https://example.atlassian.net",
+            email="test@example.com",
+            api_token="test-token",
+        )
+
+        with pytest.raises(ConfluenceAPIError) as exc_info:
+            client.get_page("12345")
+
+        assert exc_info.value.status_code == 401
+        assert "Authentication failed" in str(exc_info.value)
+        assert "CONFLUENCE_EMAIL" in str(exc_info.value)
+        assert "Expecting value" not in str(exc_info.value)
+
+    @responses.activate
+    def test_forbidden_error_with_html_body(self):
+        """Test that 403 HTML responses produce a clear permission error."""
+        responses.add(
+            responses.GET,
+            "https://example.atlassian.net/wiki/api/v2/pages/12345",
+            body="<!doctype html><title>HTTP Status 403 - Forbidden</title>",
+            status=403,
+            content_type="text/html",
+        )
+
+        client = ConfluenceClient(
+            base_url="https://example.atlassian.net",
+            email="test@example.com",
+            api_token="test-token",
+        )
+
+        with pytest.raises(ConfluenceAPIError) as exc_info:
+            client.get_page("12345")
+
+        assert exc_info.value.status_code == 403
+        assert "Access denied" in str(exc_info.value)
+        assert "Expecting value" not in str(exc_info.value)
+
+    @responses.activate
     def test_rate_limiting_retry(self):
         """Test that rate limiting triggers retry."""
         # First request returns 429
